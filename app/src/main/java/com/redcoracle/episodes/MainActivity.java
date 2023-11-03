@@ -29,6 +29,8 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SearchView;
@@ -55,8 +57,6 @@ public class MainActivity
                ActivityCompat.OnRequestPermissionsResultCallback {
 
     private static Context context;
-    private static final int WRITE_REQUEST_CODE = 0;
-    private static final int READ_REQUEST_CODE = 1;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -147,7 +147,7 @@ public class MainActivity
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("application/x-sqlite3");
             intent.putExtra(Intent.EXTRA_TITLE, FileUtilities.get_suggested_filename());
-            startActivityForResult(intent, WRITE_REQUEST_CODE);
+            backupFilePicker.launch(intent);
             Toast.makeText(this, this.getString(R.string.back_up_started_message), Toast.LENGTH_LONG).show();
         } else {
             // For now, keep the existing functionality on pre-API19
@@ -164,7 +164,7 @@ public class MainActivity
             intent.setType("application/x-sqlite3");
             // On API 31 the file was not selectable without this
             intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"application/octet-stream"});
-            startActivityForResult(intent, READ_REQUEST_CODE);
+            restoreFilePicker.launch(intent);
             Toast.makeText(this, this.getString(R.string.restore_started_message), Toast.LENGTH_LONG).show();
         } else {
             // For now, keep the existing functionality on pre-API19
@@ -176,37 +176,45 @@ public class MainActivity
         }
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
+    final ActivityResultLauncher<Intent> backupFilePicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), (intent) -> {
         try {
-            if (requestCode == WRITE_REQUEST_CODE && resultCode == Activity.RESULT_OK
-                    && data != null && data.getData() != null) {
-                Uri uri = data.getData();
-                FileUtilities.copy_file(
-                    new FileInputStream(this.getDatabasePath(DatabaseOpenHelper.getDbName())).getChannel(),
-                    new FileOutputStream(getContentResolver().openFileDescriptor(uri, "w").getFileDescriptor()).getChannel()
-                );
-                Toast.makeText(
-                    this,
-                    String.format(this.getString(R.string.back_up_success_message), FileUtilities.uri_to_filename(this, uri)),
-                    Toast.LENGTH_LONG
-                ).show();
-            } else if (requestCode == READ_REQUEST_CODE && resultCode == Activity.RESULT_OK
-                           && data != null && data.getData() != null) {
-                Uri uri = data.getData();
-                FileUtilities.copy_file(
-                    new FileInputStream(getContentResolver().openFileDescriptor(uri, "r").getFileDescriptor()).getChannel(),
-                    new FileOutputStream(this.getDatabasePath(DatabaseOpenHelper.getDbName())).getChannel()
-                );
-                ShowsProvider.reloadDatabase(this);
-                android.os.AsyncTask.execute(() -> Glide.get(getApplicationContext()).clearDiskCache());
-                Toast.makeText(this, this.getString(R.string.restore_success_message), Toast.LENGTH_LONG).show();
+            if (intent.getResultCode() == Activity.RESULT_OK && intent.getData() != null) {
+                final Uri uri = intent.getData().getData();
+                if (uri != null) {
+                    FileUtilities.copy_file(
+                        new FileInputStream(this.getDatabasePath(DatabaseOpenHelper.getDbName())).getChannel(),
+                        new FileOutputStream(getContentResolver().openFileDescriptor(uri, "w").getFileDescriptor()).getChannel()
+                    );
+                    Toast.makeText(
+                        this,
+                        String.format(this.getString(R.string.back_up_success_message), FileUtilities.uri_to_filename(this, uri)),
+                        Toast.LENGTH_LONG
+                    ).show();
+                }
             }
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-    }
+    });
+
+    final ActivityResultLauncher<Intent> restoreFilePicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), (intent) -> {
+        try {
+            if (intent.getResultCode() == Activity.RESULT_OK && intent.getData() != null) {
+                final Uri uri = intent.getData().getData();
+                if (uri != null) {
+                    FileUtilities.copy_file(
+                        new FileInputStream(getContentResolver().openFileDescriptor(uri, "r").getFileDescriptor()).getChannel(),
+                        new FileOutputStream(this.getDatabasePath(DatabaseOpenHelper.getDbName())).getChannel()
+                    );
+                    ShowsProvider.reloadDatabase(this);
+                    android.os.AsyncTask.execute(() -> Glide.get(getApplicationContext()).clearDiskCache());
+                    Toast.makeText(this, this.getString(R.string.restore_success_message), Toast.LENGTH_LONG).show();
+                }
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+    });
 
 	@Override
 	public void onBackupSelected(String backupFilename) {

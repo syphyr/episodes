@@ -12,6 +12,7 @@ def getCommitId = { ->
 android {
     namespace 'com.redcoracle.episodes'
     compileSdkVersion 33
+    buildToolsVersion '33.0.2'
     defaultConfig {
         minSdkVersion 21
         targetSdkVersion 33
